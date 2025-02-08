@@ -58,6 +58,7 @@ class UNet(nn.Module):
         self.encoder4 = Encoder(in_channels=256,out_channels=512)
 
         self.bottleneck = Conv_block(in_channels=512,out_channels=1024)
+        self.dropout = nn.Dropout2d(p=0.5)
 
         self.decoder1 = Decoder(in_channels=1024,out_channels=512)
         self.decoder2 = Decoder(in_channels=512,out_channels=256)
@@ -73,13 +74,14 @@ class UNet(nn.Module):
         skip4,pooled4 = self.encoder4(pooled3)
 
         bottleneck = self.bottleneck(pooled4)
+        bottleneck = self.dropout(bottleneck)
 
         decoder_output1 = self.decoder1(bottleneck,skip4)
         decoder_output2 = self.decoder2(decoder_output1,skip3)
         decoder_output3 = self.decoder3(decoder_output2,skip2)
         decoder_output4 = self.decoder4(decoder_output3,skip1)
 
-        output = torch.sigmoid(self.final_layer(decoder_output4))
+        output = self.final_layer(decoder_output4)
 
         return output
 
