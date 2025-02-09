@@ -89,37 +89,6 @@ class BrainTumorSegmentationDataset(Dataset):
         
         return image, mask
 
-def custom_dataloader(dataset, batch_size=16, shuffle=True):
-    """
-    A generator function that yields batches of data from the dataset
-    without using torch.utils.data.DataLoader.
-    """
-    dataset_size = len(dataset)
-    indices = torch.arange(dataset_size)
-
-    if shuffle:
-        indices = indices[torch.randperm(dataset_size)]
-
-    # Go through indices in mini-batch increments
-    for start_idx in range(0, dataset_size, batch_size):
-        end_idx = start_idx + batch_size
-        batch_indices = indices[start_idx:end_idx]
-        
-        # Collect the data samples for the current batch
-        batch_data = []
-        batch_labels = []
-        for i in batch_indices:
-            x, y = dataset[i]
-            batch_data.append(x)
-            batch_labels.append(y)
-        
-        # Convert list of tensors to a single tensor (optional)
-        batch_data = torch.stack(batch_data)     # shape: (batch_size, channels, height, width)
-        batch_labels = torch.stack(batch_labels) # shape: (batch_size,)
-        
-        yield batch_data, batch_labels
-
-
 class CustomDataLoader:
     """
     A simple, minimal custom dataloader that:
