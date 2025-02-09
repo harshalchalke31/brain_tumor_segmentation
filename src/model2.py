@@ -44,3 +44,7 @@ class MultiHeadAttention(nn.Module):
         attn_output = attn_output.transpose(1,2).contiguous().view(B, N, self.total_key_dim) #(B, N, key_dim)
         output = self.out_proj(attn_output)  # (B, N, embed_dim)
         return output
+    
+class TransformerEncoder(nn.Module):
+    def __init__(self, hidden_dim, num_heads, mlp_dim, dropout_rate):
+        super().__init__()

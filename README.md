@@ -56,3 +56,7 @@ Below are three randomly selected test cases, showing the **original MRI scan, g
 ### **Conclusion**
 - The model performs well, with a **Dice similarity of ~0.76**, indicating **strong overlap** between predictions and ground truth.
 - Further improvements could involve **post-processing techniques**, **data augmentation**, or **architectural modifications** to refine predictions on challenging cases.
+
+
+### **Detailed Model Architecture**
+![](./logs/model_architecture.png)
