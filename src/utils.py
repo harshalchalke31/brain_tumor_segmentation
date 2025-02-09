@@ -4,6 +4,9 @@ from PIL import Image
 from torch.utils.data import Dataset
 import os
 import cv2
+import csv
+import random
+import matplotlib.pyplot as plt
 
 class DiceLoss(nn.Module):
     def __init__(self):
@@ -197,3 +200,170 @@ class CustomDataLoader:
     def __len__(self):
         """Return the total number of batches (not samples)."""
         return self.num_batches
+    
+
+
+class UNetTester:
+    def __init__(self, 
+                 model, 
+                 device,
+                 model_path, 
+                 test_dataset,
+                 output_dir="./test_results",
+                 csv_filename="test_metrics.csv"):
+        self.model = model
+        self.device = device
+        self.model_path = model_path
+        self.test_dataset = test_dataset
+        self.output_dir = output_dir
+        os.makedirs(self.output_dir, exist_ok=True)
+        self.csv_path = os.path.join(self.output_dir, csv_filename)
+
+        # We'll make a custom loader with batch_size=1 for convenience:
+        self.test_loader = CustomDataLoader(test_dataset, batch_size=1, shuffle=False)
+
+    def load_weights(self):
+        """Load model weights from disk."""
+        self.model.load_state_dict(torch.load(self.model_path, map_location=self.device))
+        self.model.to(self.device)
+        self.model.eval()
+
+    def compute_sample_metrics(self, logits, targets, threshold=0.5, smooth=1e-5):
+        """
+        Compute segmentation metrics between predicted (raw logits) and targets.
+        Returns dict with dice, jaccard, precision, recall, f1
+        """
+        # 1) Convert logits -> binary predictions
+        probs = torch.sigmoid(logits)  # shape [1, 1, H, W]
+        preds = (probs > threshold).long()
+        targets = targets.long()
+
+        # 2) Flatten
+        preds_flat = preds.view(-1)
+        targets_flat = targets.view(-1)
+
+        intersection = (preds_flat * targets_flat).sum().float()
+        union = (preds_flat + targets_flat).clamp_max(1).sum().float()  # or bitwise OR
+
+        # 3) Compute
+        dice = (2. * intersection + smooth) / (preds_flat.sum() + targets_flat.sum() + smooth)
+        jaccard = (intersection + smooth) / (union + smooth)
+
+        total_pred_positive = preds_flat.sum().float()
+        precision = (intersection + smooth) / (total_pred_positive + smooth)
+
+        total_gt_positive = targets_flat.sum().float()
+        recall = (intersection + smooth) / (total_gt_positive + smooth)
+
+        f1 = (2 * precision * recall) / (precision + recall + smooth)
+
+        return {
+            "dice": dice.item(),
+            "jaccard": jaccard.item(),
+            "precision": precision.item(),
+            "recall": recall.item(),
+            "f1": f1.item()
+        }
+
+    def evaluate_model(self):
+        """
+        1) Evaluate the model on the entire test set.
+        2) Compute sample-wise metrics, save them to CSV.
+        3) Return all metrics for further usage or summarizing.
+        """
+        self.load_weights()  # ensure weights are loaded
+        # Prepare CSV
+        with open(self.csv_path, mode="w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["SampleID", "Dice", "Jaccard", "Precision", "Recall", "F1"])
+
+        all_metrics = []
+
+        for idx, (image, mask) in enumerate(self.test_loader):
+            image = image.to(self.device)   # shape [1, 3, H, W]
+            mask  = mask.to(self.device)    # shape [1, 1, H, W]
+
+            with torch.no_grad():
+                logits = self.model(image)  # raw model outputs
+
+            metrics_dict = self.compute_sample_metrics(logits, mask)
+            all_metrics.append(metrics_dict)
+
+            # Save each sample's metrics to CSV
+            with open(self.csv_path, mode="a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    idx+1,
+                    metrics_dict["dice"],
+                    metrics_dict["jaccard"],
+                    metrics_dict["precision"],
+                    metrics_dict["recall"],
+                    metrics_dict["f1"],
+                ])
+
+        # Compute average metrics
+        avg_metrics = {
+            "dice":     sum(m["dice"]     for m in all_metrics)/len(all_metrics),
+            "jaccard":  sum(m["jaccard"]  for m in all_metrics)/len(all_metrics),
+            "precision":sum(m["precision"]for m in all_metrics)/len(all_metrics),
+            "recall":   sum(m["recall"]   for m in all_metrics)/len(all_metrics),
+            "f1":       sum(m["f1"]       for m in all_metrics)/len(all_metrics),
+        }
+
+        # Append average row in CSV
+        with open(self.csv_path, mode="a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "Average",
+                avg_metrics["dice"],
+                avg_metrics["jaccard"],
+                avg_metrics["precision"],
+                avg_metrics["recall"],
+                avg_metrics["f1"],
+            ])
+
+        print(f"Per-sample and average metrics saved to: {self.csv_path}")
+        return all_metrics, avg_metrics
+
+    def visualize_predictions(self, num_samples=10):
+        """
+        Visualize predictions for a random subset of test samples.
+        Saves images [MRI, True Mask, Predicted Mask] as .png files.
+        """
+        # Pick random samples
+        random_indices = random.sample(range(len(self.test_dataset)), min(num_samples, len(self.test_dataset)))
+
+        for sample_idx in random_indices:
+            image, mask = self.test_dataset[sample_idx]  # image [3,H,W], mask [1,H,W]
+            image_tensor = image.unsqueeze(0).to(self.device)  # [1,3,H,W]
+            
+            with torch.no_grad():
+                logits = self.model(image_tensor)
+                probs = torch.sigmoid(logits)
+                pred_mask = (probs > 0.5).float().cpu().squeeze().numpy()
+
+            # Convert to numpy for display
+            image_np = image.permute(1,2,0).cpu().numpy()  # shape [H, W, 3]
+            mask_np  = mask.squeeze().cpu().numpy()        # shape [H, W]
+
+            # Plot them
+            fig, axs = plt.subplots(1, 3, figsize=(12,4))
+            axs[0].imshow(image_np, cmap='gray')
+            axs[0].set_title("MRI Image")
+            axs[0].axis('off')
+
+            axs[1].imshow(mask_np, cmap='gray')
+            axs[1].set_title("True Mask")
+            axs[1].axis('off')
+
+            axs[2].imshow(pred_mask, cmap='gray')
+            axs[2].set_title("Predicted Mask")
+            axs[2].axis('off')
+
+            fig.tight_layout()
+            out_path = os.path.join(self.output_dir, f"sample_{sample_idx}.png")
+            plt.savefig(out_path)
+            plt.close(fig)
+
+        print(f"Saved {len(random_indices)} prediction visualizations to {self.output_dir}")
+
