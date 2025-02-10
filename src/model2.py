@@ -44,7 +44,44 @@ class MultiHeadAttention(nn.Module):
         attn_output = attn_output.transpose(1,2).contiguous().view(B, N, self.total_key_dim) #(B, N, key_dim)
         output = self.out_proj(attn_output)  # (B, N, embed_dim)
         return output
-    
+
+class Convblock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3):
+        super().__init__()
+        padding = kernel_size//2
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,padding=padding),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+    def forward(self,x):
+        return self.conv(x)
+
 class TransformerEncoder(nn.Module):
     def __init__(self, hidden_dim, num_heads, mlp_dim, dropout_rate):
         super().__init__()
+        self.norm = nn.LayerNorm(hidden_dim)
+        self.attn = MultiHeadAttention(embed_dim=hidden_dim,num_heads=num_heads,key_dim=hidden_dim,dropout_rate=dropout_rate)
+        self.dropout = nn.Dropout(dropout_rate)
+        self.mlp = nn.Sequential(
+            nn.Linear(hidden_dim,mlp_dim),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(mlp_dim,hidden_dim),
+            nn.Dropout(dropout_rate)
+        )
+
+    def forward(self,x):
+        skip1 = x
+        x = self.norm(x)
+        attn_out = self.attn(x,x,x)
+        x = skip1 + attn_out
+
+        skip2 = x
+        x = self.norm(x)
+        mlp_out = self.mlp(x)
+        x = skip2 + mlp_out
+
+        return x
+    
+
