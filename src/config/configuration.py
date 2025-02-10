@@ -48,7 +48,8 @@ class ConfigurationManager:
             num_layers=params.num_layers,
             num_heads=params.num_heads,
             mlp_dim=params.mlp_dim,
-            dropout_rate=params.dropout_rate
+            dropout_rate=params.dropout_rate,
+            skip_indices=params.skip_indices
 
         )
 

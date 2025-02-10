@@ -1,9 +1,10 @@
 UNetRTrainingArguments:
-  image_size: 512
-  num_layers: 12
-  hidden_dim: 64
-  mlp_dim: 128
-  num_heads: 6
+  image_size: 256
+  num_layers: 6
+  hidden_dim: 32
+  mlp_dim: 64
+  num_heads: 4
   dropout_rate: 0.1
-  patch_size: 1       # For typical UNETR, patch_size is larger (e.g. 16). Here we use 1 to mirror the TF code.
+  patch_size: 16       # For typical UNETR, patch_size is larger (e.g. 16). Here we use 1 to mirror the TF code.
   num_channels: 3
+  skip_indices: {2,4,6}

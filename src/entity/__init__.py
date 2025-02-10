@@ -10,3 +10,4 @@ class UNetRTrainerConfig:
     num_heads:int
     mlp_dim:int
     dropout_rate:float
+    skip_indices: dict
