@@ -221,5 +221,5 @@ class UNetR2D(nn.Module):
         x4 = self.dec4_conv(x4)  # reduce channels to 16
 
         out = self.out_conv(x4)
-        out = torch.sigmoid(out)
+        # out = torch.sigmoid(out)
         return out

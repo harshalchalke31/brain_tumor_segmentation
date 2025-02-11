@@ -1,10 +1,11 @@
-from utils import BCEDiceLoss, dice_coefficient
+from src.utils import BCEDiceLoss, dice_coefficient, DiceLoss
 import torch
 import torch.optim as optim
 import csv
 
+
 def train_UNet(model, train_loader, valid_loader, device, num_epochs=500, lr=1e-3,
-               log_path='./logs/train_log.csv', model_path='./models/model1/best_model.pth',patience=50):
+               log_path='./logs/train_log2.csv', model_path='./models/model1/best_model2.pth',patience=50):
     # Use the combined BCE + Dice loss (ensure that BCEDiceLoss is defined/imported)
     criterion = BCEDiceLoss()
     
@@ -67,9 +68,6 @@ def train_UNet(model, train_loader, valid_loader, device, num_epochs=500, lr=1e-
         # Step the cosine annealing scheduler
         scheduler.step()
 
-        print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, "
-              f"Valid Loss: {valid_loss:.4f}, Valid Dice: {valid_dice:.4f}")
-
         with open(log_path, mode='a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([epoch + 1, train_loss, valid_loss, valid_dice])
@@ -80,6 +78,9 @@ def train_UNet(model, train_loader, valid_loader, device, num_epochs=500, lr=1e-
             patience_counter=0
         else:
             patience_counter+=1
+        
+        print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, "
+              f"Valid Loss: {valid_loss:.4f}, Valid Dice: {valid_dice:.4f}, Patience: {patience_counter}")
 
         if patience_counter>=patience:
             print('Early Stopping Triggered!')
