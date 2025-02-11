@@ -7,6 +7,8 @@ import cv2
 import csv
 import random
 import matplotlib.pyplot as plt
+from pathlib import Path
+import pandas as pd
 
 class DiceLoss(nn.Module):
     def __init__(self):
@@ -170,7 +172,39 @@ class CustomDataLoader:
         """Return the total number of batches (not samples)."""
         return self.num_batches
     
+def plot_loss_curves(log_path:Path):
+    df = pd.read_csv(log_path)  
 
+    # Extract columns
+    epochs = df['Epoch']
+    train_loss = df['Train Loss']
+    valid_loss = df['Valid Loss']
+    valid_dice = df['Valid Dice']
+
+    # Create a figure with two subplots side by side
+    plt.figure(figsize=(10, 4))
+
+    # --- Subplot 1: Loss curves ---
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs, train_loss, label='Train Loss')
+    plt.plot(epochs, valid_loss, label='Valid Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training & Validation Loss')
+    plt.legend()
+    plt.grid(True)
+
+    # --- Subplot 2: Validation Dice ---
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs, valid_dice, label='Valid Dice', color='green')
+    plt.xlabel('Epoch')
+    plt.ylabel('Dice')
+    plt.title('Validation Dice')
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.show()
 
 class UNetTester:
     def __init__(self, 
