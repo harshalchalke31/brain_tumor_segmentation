@@ -60,3 +60,10 @@ Below are three randomly selected test cases, showing the **original MRI scan, g
 
 ### **Detailed Model Architecture**
 ![](./logs/model_architecture.png)
+
+
+## Dataset Links
+
+https://www.kaggle.com/datasets/mateuszbuda/lgg-mri-segmentation
+https://www.kaggle.com/datasets/masoudnickparvar/brain-tumor-mri-dataset
+https://www.kaggle.com/datasets/nikhilroxtomar/brain-tumor-segmentation
