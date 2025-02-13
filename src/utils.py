@@ -9,6 +9,16 @@ import random
 import matplotlib.pyplot as plt
 from pathlib import Path
 import pandas as pd
+import glob
+import gc
+
+def free_model_memory(model):
+    for param in model.parameters():
+        del param
+    if hasattr(model, 'grad'):
+        del model.grad
+    torch.cuda.empty_cache()
+    gc.collect()
 
 class DiceLoss(nn.Module):
     def __init__(self):
@@ -90,6 +100,32 @@ class BrainTumorSegmentationDataset(Dataset):
             mask = self.transform(mask)
         
         return image, mask
+
+class BrainTumorSegmentationDataset2(Dataset):
+    def __init__(self, root_dir, transform=None):
+        self.root_dir = root_dir
+        self.transform = transform
+        
+        # Get all image files (without mask)
+        self.image_paths = sorted(glob.glob(os.path.join(root_dir, '**', '*[!_mask].tif'), recursive=True))
+        
+    def __len__(self):
+        return len(self.image_paths)
+    
+    def __getitem__(self, idx):
+        img_path = self.image_paths[idx]
+        mask_path = img_path.replace('.tif', '_mask.tif')  # Assumes same name with "_mask" suffix
+
+        # Load image and mask
+        image = Image.open(img_path).convert("RGB")
+        mask = Image.open(mask_path).convert("L")  # Grayscale mask
+        
+        if self.transform:
+            image = self.transform(image)
+            mask = self.transform(mask)  # Ensure mask is transformed the same way
+        
+        return image, mask
+    
 
 class CustomDataLoader:
     """
