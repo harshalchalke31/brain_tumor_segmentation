@@ -247,19 +247,14 @@ class UNetTester:
                  model, 
                  device,
                  model_path, 
-                 test_dataset,
-                 output_dir="./test_results",
-                 csv_filename="test_metrics.csv"):
+                 test_loader,
+                 log_path="test_metrics.csv"):
+        
         self.model = model
         self.device = device
         self.model_path = model_path
-        self.test_dataset = test_dataset
-        self.output_dir = output_dir
-        os.makedirs(self.output_dir, exist_ok=True)
-        self.csv_path = os.path.join(self.output_dir, csv_filename)
-
-        # We'll make a custom loader with batch_size=1 for convenience:
-        self.test_loader = CustomDataLoader(test_dataset, batch_size=1, shuffle=False)
+        self.test_loader = test_loader
+        self.log_path = log_path
 
     def load_weights(self):
         """Load model weights from disk."""
@@ -312,7 +307,7 @@ class UNetTester:
         """
         self.load_weights()  # ensure weights are loaded
         # Prepare CSV
-        with open(self.csv_path, mode="w", newline="") as f:
+        with open(self.log_path, mode="w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["SampleID", "Dice", "Jaccard", "Precision", "Recall", "F1"])
 
@@ -329,7 +324,7 @@ class UNetTester:
             all_metrics.append(metrics_dict)
 
             # Save each sample's metrics to CSV
-            with open(self.csv_path, mode="a", newline="") as f:
+            with open(self.log_path, mode="a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow([
                     idx+1,
@@ -350,7 +345,7 @@ class UNetTester:
         }
 
         # Append average row in CSV
-        with open(self.csv_path, mode="a", newline="") as f:
+        with open(self.log_path, mode="a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([
                 "Average",
@@ -361,7 +356,7 @@ class UNetTester:
                 avg_metrics["f1"],
             ])
 
-        print(f"Per-sample and average metrics saved to: {self.csv_path}")
+        print(f"Per-sample and average metrics saved to: {self.log_path}")
         return all_metrics, avg_metrics
 
     def visualize_predictions(self, num_samples=10):
