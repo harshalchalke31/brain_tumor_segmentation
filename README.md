@@ -1,5 +1,5 @@
 # Brain Tumor Segmentation with UNet, TransUNet, and MobileNetV3
-!(./logs/sample_59.png)
+![](./logs/sample_59.png)
 
 ## **Project Overview**
 This project focuses on **brain tumor segmentation** using **three different models**: **UNet, TransUNet, and MobileNetV3-based UNet**. Additionally, an **MRI classifier using ResNet50** was trained to classify MRI scans into four categories before segmentation.
