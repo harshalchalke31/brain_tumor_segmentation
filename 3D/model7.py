@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 # ------------------------------------------------------------------
 # 1) Squeeze-and-Excitation (3D)
 # ------------------------------------------------------------------
@@ -28,16 +27,6 @@ class SELayer3D(nn.Module):
 # ------------------------------------------------------------------
 class InvertedResidual3D(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride, expand_ratio, use_se, activation):
-        """
-        Args:
-            in_channels (int):  Number of input channels.
-            out_channels (int): Number of output channels.
-            kernel_size (int):  Convolution kernel size for the depthwise conv.
-            stride (tuple):     Stride for the depthwise conv (d,h,w).
-            expand_ratio (float): Expansion multiplier for hidden channels.
-            use_se (bool):        Whether to use Squeeze-and-Excitation.
-            activation (str):     "RE" for ReLU, "HS" for Hardswish.
-        """
         super(InvertedResidual3D, self).__init__()
         self.use_res_connect = (stride == (1,1,1) and in_channels == out_channels)
         hidden_dim = int(round(in_channels * expand_ratio))
@@ -83,14 +72,12 @@ class InvertedResidual3D(nn.Module):
 
 # ------------------------------------------------------------------
 # 3) 3D MobileNetV3-Inspired Encoder
-#    Using (1,2,2) strides to preserve temporal dimension.
 # ------------------------------------------------------------------
 class MobileNetV3Encoder3D(nn.Module):
     def __init__(self, in_channels=1):
         super(MobileNetV3Encoder3D, self).__init__()
         
-        # Stem: downsample spatial dims only
-        # [N, C, D, H, W] -> [N, 16, D, H/2, W/2]
+        # Stem
         self.stem = nn.Sequential(
             nn.Conv3d(in_channels, 16, kernel_size=(3,3,3), stride=(1,2,2), 
                       padding=1, bias=False),
@@ -98,8 +85,7 @@ class MobileNetV3Encoder3D(nn.Module):
             nn.Hardswish(inplace=True)
         )
         
-        # Following blocks are lightly adapted from MobileNetV3-Small.
-        # Each block can selectively downsample by stride=(1,2,2).
+        # Inverted Residual blocks (inspired by MobileNetV3-Small)
         self.block1 = InvertedResidual3D(16, 16, kernel_size=3, stride=(1,1,1),
                                          expand_ratio=1, use_se=True, activation="RE")
         self.block2 = InvertedResidual3D(16, 24, kernel_size=3, stride=(1,2,2),
@@ -116,54 +102,43 @@ class MobileNetV3Encoder3D(nn.Module):
                                          expand_ratio=2.5, use_se=False, activation="HS")
 
     def forward(self, x):
-        """
-        Returns a list of feature maps for skip connections:
-        feats = [stem_out, b1_out, b2_out, b3_out, b4_out, b5_out, b6_out, b7_out]
-        """
+        """ Return list of feature maps for skip connections. """
         features = []
         
-        x = self.stem(x)       # -> [16 channels]
+        x = self.stem(x)       # [16]
         features.append(x)
         
-        x = self.block1(x)     # -> [16]
+        x = self.block1(x)     # [16]
         features.append(x)
         
-        x = self.block2(x)     # -> [24]
+        x = self.block2(x)     # [24]
         features.append(x)
         
-        x = self.block3(x)     # -> [24]
+        x = self.block3(x)     # [24]
         features.append(x)
         
-        x = self.block4(x)     # -> [40]
+        x = self.block4(x)     # [40]
         features.append(x)
         
-        x = self.block5(x)     # -> [40]
+        x = self.block5(x)     # [40]
         features.append(x)
         
-        x = self.block6(x)     # -> [80]
+        x = self.block6(x)     # [80]
         features.append(x)
         
-        x = self.block7(x)     # -> [80]
+        x = self.block7(x)     # [80]
         features.append(x)
         
         return features
 
 # ------------------------------------------------------------------
 # 4) 3D Decoder Block (UNet-Style)
-#    Up-samples only spatial dimensions with stride=(1,2,2).
 # ------------------------------------------------------------------
 class DecoderBlock3D(nn.Module):
     def __init__(self, in_channels, out_channels):
-        """
-        Args:
-            in_channels: Number of channels in the feature map to be upsampled.
-            out_channels: Number of channels after upsampling and merging
-                          with skip connection.
-        """
         super(DecoderBlock3D, self).__init__()
-        self.up = nn.ConvTranspose3d(
-            in_channels, out_channels, kernel_size=(1,2,2), stride=(1,2,2)
-        )
+        self.up = nn.ConvTranspose3d(in_channels, out_channels,
+                                     kernel_size=(1,2,2), stride=(1,2,2))
         self.conv = nn.Sequential(
             nn.Conv3d(out_channels * 2, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm3d(out_channels),
@@ -174,11 +149,9 @@ class DecoderBlock3D(nn.Module):
         )
 
     def forward(self, x, skip):
-        # x: [B, in_channels, D, H, W]
-        # skip: [B, out_channels, D, H, W]  (spatially larger)
+        # Upsample
         x = self.up(x)
-        
-        # Spatial shape alignment if needed (pad or crop)
+        # Adjust shape if needed
         if x.shape != skip.shape:
             diff_d = skip.size(2) - x.size(2)
             diff_h = skip.size(3) - x.size(3)
@@ -186,8 +159,7 @@ class DecoderBlock3D(nn.Module):
             x = F.pad(x, [diff_w // 2, diff_w - diff_w // 2,
                           diff_h // 2, diff_h - diff_h // 2,
                           diff_d // 2, diff_d - diff_d // 2])
-
-        # Concatenate along channel dimension
+        # Skip concat
         x = torch.cat([skip, x], dim=1)
         x = self.conv(x)
         return x
@@ -196,59 +168,51 @@ class DecoderBlock3D(nn.Module):
 # 5) Complete 3D MobileNetV3–UNet
 # ------------------------------------------------------------------
 class MobileNetV3UNet3D(nn.Module):
-    def __init__(self, in_channels=1, out_channels=2):
+    def __init__(self, in_channels=3, out_channels=4):
         """
         Args:
-            in_channels:  Number of input channels (e.g. 1 for grayscale echo).
-            out_channels: Number of output channels (e.g. 2 for binary segmentation).
+            in_channels:  e.g. 3 for multi-channel MRI (Flair/T1ce/T2).
+            out_channels: e.g. 4 for multi-class segmentation (0,1,2,3).
         """
         super(MobileNetV3UNet3D, self).__init__()
         self.encoder = MobileNetV3Encoder3D(in_channels)
 
-        # Encoder features = [16,16,24,24,40,40,80,80] from shallow -> deep
-        # We define 4 decoder stages + final up, going in reverse:
-        #   - decoder4: skip with feats[-2] (80)
-        #   - decoder3: skip with feats[-3] (40)
-        #   - decoder2: skip with feats[-4] (40)
-        #   - decoder1: skip with feats[-5] (24)
+        # Encoder outputs:
+        # feats = [f0(16), f1(16), f2(24), f3(24), f4(40), f5(40), f6(80), f7(80)]
+        # We define 5 decoder blocks to eventually reach full resolution:
+        self.decoder4 = DecoderBlock3D(in_channels=80, out_channels=80)  # skip with feats[6] -> out=80
+        self.decoder3 = DecoderBlock3D(in_channels=80, out_channels=40)  # skip with feats[5] -> out=40
+        self.decoder2 = DecoderBlock3D(in_channels=40, out_channels=40)  # skip with feats[4] -> out=40
+        self.decoder1 = DecoderBlock3D(in_channels=40, out_channels=24)  # skip with feats[3] -> out=24
+        self.decoder0 = DecoderBlock3D(in_channels=24, out_channels=16)  # skip with feats[1] -> out=16
 
-        self.decoder4 = DecoderBlock3D(in_channels=80, out_channels=80)
-        self.decoder3 = DecoderBlock3D(in_channels=80, out_channels=40)
-        self.decoder2 = DecoderBlock3D(in_channels=40, out_channels=40)
-        self.decoder1 = DecoderBlock3D(in_channels=40, out_channels=24)
-
-        # Final up + conv
-        self.final_up = nn.ConvTranspose3d(
-            24, 16, kernel_size=(1,2,2), stride=(1,2,2)
-        )
+        # Final up + conv => from 16 -> out_channels
+        self.final_up = nn.ConvTranspose3d(16, 16, kernel_size=(1, 2, 2), stride=(1, 2, 2))
         self.final_conv = nn.Conv3d(16, out_channels, kernel_size=1)
 
     def forward(self, x):
-        # 1) Encode
+        # Encode
         feats = self.encoder(x)
-        # feats: [f1(16), f2(16), f3(24), f4(24), f5(40), f6(40), f7(80), f8(80)]
-        
-        # 2) Decode (bottleneck is feats[-1] -> 80 channels)
-        x = feats[-1]                                  # 80
-        x = self.decoder4(x, feats[-2])  # skip=80 -> out=80
-        x = self.decoder3(x, feats[-3])  # skip=40 -> out=40
-        x = self.decoder2(x, feats[-4])  # skip=40 -> out=40
-        x = self.decoder1(x, feats[-5])  # skip=24 -> out=24
-        
-        # 3) Final Upsampling
-        x = self.final_up(x)  # 24 -> 16
-        x = self.final_conv(x)  # 16 -> out_channels
+        # feats[-1] = f7(80), feats[-2] = f6(80), feats[-3] = f5(40), feats[-4] = f4(40), feats[-5] = f3(24),
+        # feats[-6] = f2(24), feats[-7] = f1(16), feats[-8] = f0(16)
+
+        # Bottleneck -> 80 channels
+        x = feats[-1]                       # [80]
+        x = self.decoder4(x, feats[-2])     # skip=80 -> out=80
+        x = self.decoder3(x, feats[-3])     # skip=40 -> out=40
+        x = self.decoder2(x, feats[-4])     # skip=40 -> out=40
+        x = self.decoder1(x, feats[-5])     # skip=24 -> out=24
+        x = self.decoder0(x, feats[-7])     # skip=16 -> out=16
+
+        # Final up + conv
+        x = self.final_up(x)      # [16 -> 16], restore final 128×128
+        x = self.final_conv(x)    # => [out_channels=4]
         return x
 
 
-# ------------------------------------------------------------------
-# Example Usage & Checking Parameter Counts
-# ------------------------------------------------------------------
 if __name__ == "__main__":
-    model = MobileNetV3UNet3D(in_channels=3, out_channels=4)  # updated
-    model.to(device='cuda')
+    model = MobileNetV3UNet3D(in_channels=3, out_channels=4).cuda()
 
-    dummy_input = torch.randn(1, 3, 128, 128, 128).to('cuda')  # 3 channels, brain MRI
+    dummy_input = torch.randn(1, 3, 128, 128, 128).cuda()
     out = model(dummy_input)
-    print("Output shape:", out.shape)  # ➝ Expect: [1, 4, 128, 128, 128]
-
+    print("Output shape:", out.shape)  # Expect: [1, 4, 128, 128, 128]
